@@ -120,7 +120,8 @@ class YT8MTask(base_task.Task):
     '''Processes metrics'''
     # metrics[0].accumulate(outputs=outputs, labels=labels, loss=loss)
     print("---------------- YT8M_TASK.PY ----------------")
-    print("outputs: ", outputs.shape) # (1024,3862)
+    print("outputs: ", outputs)
+    print("outputs.shape : ", outputs.shape) # (1024,3862)
     print("---------------- YT8M_TASK.PY ----------------")
     metrics[0].accumulate(predictions=outputs, labels=labels)
 
