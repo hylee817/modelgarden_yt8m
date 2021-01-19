@@ -15,7 +15,7 @@
 from official.vision.beta.projects.yt8m.eval_utils import average_precision_calculator as ap_calculator
 from official.vision.beta.projects.yt8m.eval_utils import mean_average_precision_calculator as map_calculator
 import tensorflow as tf
-import numpy
+import numpy as np
 from tensorflow.python.platform import gfile
 
 
@@ -43,14 +43,13 @@ def calculate_hit_at_one(predictions, actuals):
   print("actuals: ", actuals.shape)
   print("---------------- EVAL_UTIL.PY ----------------")
 
-  # hits = actuals[numpy.arange(actuals.shape[0]), top_prediction] #(0,...,1023),(x,x,x,...x)
-  indices=[]
-  for i in numpy.arange(actuals.shape[0]):
-    indices.append([i,top_prediction[i]])
-  hits = tf.gather_nd(indices=indices, params=actuals)
+  hits = actuals[np.arange(actuals.shape[0]), top_prediction] #(0,...,1023),(x,x,x,...x)
+  # indices=[]
+  # for i in np.arange(actuals.shape[0]):
+  #   indices.append([i,top_prediction[i]])
+  # hits = tf.gather_nd(indices=indices, params=actuals)
 
-  # return numpy.average(hits)
-  return tf.experimental.numpy.average(hits)
+  return np.average(hits)
 
 
 def calculate_precision_at_equal_recall_rate(predictions, actuals):
@@ -67,13 +66,13 @@ def calculate_precision_at_equal_recall_rate(predictions, actuals):
   """
   aggregated_precision = 0.0
   num_videos = actuals.shape[0]
-  for row in numpy.arange(num_videos):
+  for row in np.arange(num_videos):
     print("---------------- EVAL_UTIL.PY ----------------")
-    print("tf.experimental.numpy.sum(actuals[row]): ", tf.experimental.numpy.sum(actuals[row]))
+    print("tf.experimental.numpy.sum(actuals[row]): ", np.sum(actuals[row]))
     print("---------------- EVAL_UTIL.PY ----------------")
     # num_labels = int(numpy.sum(actuals[row]))
     num_labels = int(tf.experimental.numpy.sum(actuals[row]))
-    top_indices = numpy.argpartition(predictions[row],
+    top_indices = np.argpartition(predictions[row],
                                      -num_labels)[-num_labels:]
     item_precision = 0.0
     for label_index in top_indices:
@@ -141,7 +140,7 @@ def top_k_by_class(predictions, labels, k=20):
   for triplet in prediction_triplets:
     out_predictions[triplet[0]].append(triplet[1])
     out_labels[triplet[0]].append(triplet[2])
-  out_true_positives = [numpy.sum(labels[:, i]) for i in range(num_classes)]
+  out_true_positives = [np.sum(labels[:, i]) for i in range(num_classes)]
 
   return out_predictions, out_labels, out_true_positives
 
@@ -154,7 +153,7 @@ def top_k_triplets(predictions, labels, k=20):
   """
   m = len(predictions)
   k = min(k, m)
-  indices = numpy.argpartition(predictions, -k)[-k:]
+  indices = np.argpartition(predictions, -k)[-k:]
   return [(index, predictions[index], labels[index]) for index in indices]
 
 
@@ -204,6 +203,9 @@ class EvaluationMetrics(object):
       ValueError: An error occurred when the shape of predictions and actuals
         does not match.
     """
+    predictions, labels = self._convert_to_numpy(
+      predictions=predictions,
+      groundtruths=labels)
     batch_size = labels.shape[0]
     mean_hit_at_one = calculate_hit_at_one(predictions, labels)
     mean_perr = calculate_precision_at_equal_recall_rate(predictions, labels)
@@ -263,3 +265,30 @@ class EvaluationMetrics(object):
     self.map_calculator.clear()
     self.global_ap_calculator.clear()
     self.num_examples = 0
+
+  def name(self):
+    return 'avg_prec_metric'
+
+  def _convert_to_numpy(self, groundtruths, predictions):
+    """Converts tesnors to numpy arrays."""
+    if groundtruths:
+      labels = tf.nest.map_structure(lambda x: x.numpy(), groundtruths)
+      numpy_groundtruths = {}
+      for key, val in labels.items():
+        if isinstance(val, tuple):
+          val = np.concatenate(val)
+        numpy_groundtruths[key] = val
+    else:
+      numpy_groundtruths = groundtruths
+
+    if predictions:
+      outputs = tf.nest.map_structure(lambda x: x.numpy(), predictions)
+      numpy_predictions = {}
+      for key, val in outputs.items():
+        if isinstance(val, tuple):
+          val = np.concatenate(val)
+        numpy_predictions[key] = val
+    else:
+      numpy_predictions = predictions
+
+    return numpy_groundtruths, numpy_predictions
