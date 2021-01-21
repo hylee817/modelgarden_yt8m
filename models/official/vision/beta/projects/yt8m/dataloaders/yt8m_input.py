@@ -80,9 +80,6 @@ def sampler(video_matrix,
                                             seed)
     sampled_video_matrix.append(image)
 
-  print("---------------- YT8M_INPUT.PY ----------------")
-  print("sample_video_matrix: ", sampled_video_matrix)
-  print("---------------- YT8M_INPUT.PY ----------------")
   sampled_video_matrix = tf.stack(sampled_video_matrix, axis=0)
   return sampled_video_matrix
 
@@ -167,9 +164,6 @@ def _process_segment_and_label(video_matrix,
   if batch_label_weights is not None:
     output_dict["label_weights"] = batch_label_weights
 
-  print("---------------- YT8M_INPUT.PY ----------------")
-  print("batch_video_matrix", batch_video_matrix.shape) #[1,300,1152]
-  print("---------------- YT8M_INPUT.PY ----------------")
   return output_dict
 
 
@@ -192,20 +186,11 @@ def _get_video_matrix(features, feature_size, max_frames,
   decoded_features = tf.reshape(
     tf.cast(tf.io.decode_raw(features, tf.uint8), tf.float32),  # tf.decode_raw -> tf.io.decode_raw
     [-1, feature_size])
-  print("---------------- YT8M_INPUT.PY ----------------")
-  print("decoded_features: ", tf.cast(tf.io.decode_raw(features, tf.uint8), tf.float32))
-  print("decoded_features after reshape [-1, feature_size]:  ", decoded_features)
-  print("---------------- YT8M_INPUT.PY ----------------")
 
   num_frames = tf.math.minimum(tf.shape(decoded_features)[0], max_frames)
   feature_matrix = utils.Dequantize(decoded_features, max_quantized_value,
                                     min_quantized_value)
   feature_matrix = resize_axis(feature_matrix, 0, max_frames)
-  print("---------------- YT8M_INPUT.PY ----------------")
-  print("feature_matrix: ", feature_matrix)
-  print("num_frames: ", num_frames)
-  print("---------------- YT8M_INPUT.PY ----------------")
-
   return feature_matrix, num_frames
 
 
@@ -236,10 +221,6 @@ def _concat_features(features, feature_names, feature_sizes,
   num_frames = -1  # the number of frames in the video
   feature_matrices = [None] * num_features  # an array of different features
   for feature_index in range(num_features):
-    print("---------------- YT8M_INPUT.PY ----------------")
-    print("features[feature_names[feature_index]]: ", features[feature_names[feature_index]])
-    print("---------------- YT8M_INPUT.PY ----------------")
-
     feature_matrix, num_frames_in_this_feature = _get_video_matrix(
       features[feature_names[feature_index]],
       feature_sizes[feature_index], max_frames,
@@ -254,9 +235,6 @@ def _concat_features(features, feature_names, feature_sizes,
 
   # concatenate different features
   video_matrix = tf.concat(feature_matrices, 1)
-  print("---------------- YT8M_INPUT.PY ----------------")
-  print("video_matrix: ", video_matrix.shape)
-  print("---------------- YT8M_INPUT.PY ----------------")
 
   return video_matrix, num_frames
 
@@ -297,10 +275,6 @@ class Decoder(decoder.Decoder):
       context_features=self._context_features,
       sequence_features=self._sequence_features)
 
-    print("---------------- YT8M_INPUT.PY ----------------")
-    print("features (decode): ", features)
-    print("---------------- YT8M_INPUT.PY ----------------")
-
     return {'contexts':contexts, 'features':features}
 
 
@@ -328,14 +302,12 @@ class Parser(parser.Parser):
     self.seed = SEED_VALUE
 
 
-
   def _parse_train_data(self, decoded_tensors):  # -> Tuple[Dict[str, tf.Tensor], tf.Tensor]
     """Parses data for training."""
     # loads (potentially) different types of features and concatenates them
     self.video_matrix, self.num_frames = _concat_features(decoded_tensors["features"], self._feature_names, self._feature_sizes,
                                                           self._max_frames, self._max_quantized_value,
                                                           self._min_quantized_value)
-
     # call sampler
     # self.video_matrix = sampler(self.video_matrix, self.num_frames, self.stride, self.seed) #TODO: sampler revive
     output_dict = _process_segment_and_label(self.video_matrix, self.num_frames, decoded_tensors["contexts"], self._segment_labels,
@@ -349,7 +321,7 @@ class Parser(parser.Parser):
                                                           self._max_frames, self._max_quantized_value,
                                                           self._min_quantized_value)
     output_dict = _process_segment_and_label(self.video_matrix, self.num_frames, decoded_tensors["contexts"], self._segment_labels,
-                                               self._segment_size, self._num_classes)
+                                             self._segment_size, self._num_classes)
 
     return output_dict  # batched
 

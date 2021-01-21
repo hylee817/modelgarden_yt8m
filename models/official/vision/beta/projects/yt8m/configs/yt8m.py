@@ -43,8 +43,8 @@ def yt8m(is_training):
     split='train' if is_training else 'valid',
   )
 
-YT8M_TRAIN_EXAMPLES = 4880000 #TODO: get actual numbers
-YT8M_VAL_EXAMPLES = 1220000
+YT8M_TRAIN_EXAMPLES = 48800 #TODO: get actual numbers
+YT8M_VAL_EXAMPLES = 12200
 
 @dataclasses.dataclass
 class YT8MModel(hyperparams.Config):

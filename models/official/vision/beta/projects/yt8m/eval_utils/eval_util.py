@@ -18,7 +18,6 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.python.platform import gfile
 
-
 def flatten(l):
   """Merges a list of lists into a single list. """
   return [item for sublist in l for item in sublist]
@@ -36,19 +35,8 @@ def calculate_hit_at_one(predictions, actuals):
   Returns:
     float: The average hit at one across the entire batch.
   """
-  # top_prediction = numpy.argmax(predictions, 1)
-  top_prediction = tf.math.argmax(predictions, 1)
-  print("---------------- EVAL_UTIL.PY ----------------")
-  print("top_prediction: ", top_prediction)
-  print("actuals: ", actuals.shape)
-  print("---------------- EVAL_UTIL.PY ----------------")
-
+  top_prediction = np.argmax(predictions, 1)
   hits = actuals[np.arange(actuals.shape[0]), top_prediction] #(0,...,1023),(x,x,x,...x)
-  # indices=[]
-  # for i in np.arange(actuals.shape[0]):
-  #   indices.append([i,top_prediction[i]])
-  # hits = tf.gather_nd(indices=indices, params=actuals)
-
   return np.average(hits)
 
 
@@ -67,11 +55,7 @@ def calculate_precision_at_equal_recall_rate(predictions, actuals):
   aggregated_precision = 0.0
   num_videos = actuals.shape[0]
   for row in np.arange(num_videos):
-    print("---------------- EVAL_UTIL.PY ----------------")
-    print("tf.experimental.numpy.sum(actuals[row]): ", np.sum(actuals[row]))
-    print("---------------- EVAL_UTIL.PY ----------------")
-    # num_labels = int(numpy.sum(actuals[row]))
-    num_labels = int(tf.experimental.numpy.sum(actuals[row]))
+    num_labels = int(np.sum(actuals[row]))
     top_indices = np.argpartition(predictions[row],
                                      -num_labels)[-num_labels:]
     item_precision = 0.0
@@ -184,7 +168,6 @@ class EvaluationMetrics(object):
     self.num_examples = 0
 
 
-  # def accumulate(self, predictions, labels, loss):
   def accumulate(self, predictions, labels):
 
     """Accumulate the metrics calculated locally for this mini-batch.
@@ -194,7 +177,6 @@ class EvaluationMetrics(object):
         Dimensions are 'batch' x 'num_classes'.
       labels: A numpy matrix containing the ground truth labels. Dimensions are
         'batch' x 'num_classes'.
-      loss: A numpy array containing the loss for each sample.
 
     Returns:
       dictionary: A dictionary storing the metrics for the mini-batch.
@@ -204,8 +186,8 @@ class EvaluationMetrics(object):
         does not match.
     """
     predictions, labels = self._convert_to_numpy(
-      predictions=predictions,
-      groundtruths=labels)
+      predictions=predictions[0],
+      groundtruths=labels[0])
     batch_size = labels.shape[0]
     mean_hit_at_one = calculate_hit_at_one(predictions, labels)
     mean_perr = calculate_precision_at_equal_recall_rate(predictions, labels)
@@ -225,7 +207,6 @@ class EvaluationMetrics(object):
     self.sum_perr += mean_perr * batch_size
     # self.sum_loss += mean_loss * batch_size
 
-    # return {"hit_at_one": mean_hit_at_one, "perr": mean_perr, "loss": mean_loss}
     return {"hit_at_one": mean_hit_at_one, "perr": mean_perr}
 
   def get(self):
@@ -266,29 +247,21 @@ class EvaluationMetrics(object):
     self.global_ap_calculator.clear()
     self.num_examples = 0
 
+  @property
   def name(self):
     return 'avg_prec_metric'
 
   def _convert_to_numpy(self, groundtruths, predictions):
     """Converts tesnors to numpy arrays."""
-    if groundtruths:
+    if groundtruths is not None:
       labels = tf.nest.map_structure(lambda x: x.numpy(), groundtruths)
-      numpy_groundtruths = {}
-      for key, val in labels.items():
-        if isinstance(val, tuple):
-          val = np.concatenate(val)
-        numpy_groundtruths[key] = val
     else:
-      numpy_groundtruths = groundtruths
+      labels = groundtruths
 
-    if predictions:
+    if predictions is not None:
       outputs = tf.nest.map_structure(lambda x: x.numpy(), predictions)
-      numpy_predictions = {}
-      for key, val in outputs.items():
-        if isinstance(val, tuple):
-          val = np.concatenate(val)
-        numpy_predictions[key] = val
     else:
-      numpy_predictions = predictions
+      outputs = predictions
 
-    return numpy_groundtruths, numpy_predictions
+    labels = labels * 1
+    return outputs, labels

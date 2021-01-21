@@ -35,10 +35,6 @@ class YT8MTask(base_task.Task):
     data_cfg = self.task_config.train_data
     common_input_shape = [data_cfg.max_frames, sum(data_cfg.feature_sizes)] #TODO: revise
     input_specs = tf.keras.layers.InputSpec(shape=common_input_shape)
-    print("---------------- YT8M_TASK.PY ----------------")
-    print("input_specs", input_specs)
-    print("---------------- YT8M_TASK.PY ----------------")
-
     logging.info('Build model input %r', common_input_shape)
 
     #model configuration
@@ -139,9 +135,6 @@ class YT8MTask(base_task.Task):
     features, labels = inputs['video_matrix'], inputs['labels']
     features = tf.squeeze(features) #(batch, 1, classes) -> (batch, classes)
     labels = tf.squeeze(labels)
-    print("---------------- YT8M_TASK.PY ----------------")
-    print("features: ", features.shape)
-    print("---------------- YT8M_TASK.PY ----------------")
 
     num_replicas = tf.distribute.get_strategy().num_replicas_in_sync
     with tf.GradientTape() as tape:
@@ -150,7 +143,6 @@ class YT8MTask(base_task.Task):
       # mixed_float16 or mixed_bfloat16 to ensure output is casted as float32.
       outputs = tf.nest.map_structure(lambda x: tf.cast(x, tf.float32), outputs)
 
-      print("print1\n")
 
       # Computes per-replica loss
       loss, model_loss = self.build_losses(
@@ -159,7 +151,6 @@ class YT8MTask(base_task.Task):
       # optimizer.
       scaled_loss = loss / num_replicas
 
-      print("print2\n")
 
       # For mixed_precision policy, when LossScaleOptimizer is used, loss is
       # scaled for numerical stability.
@@ -170,7 +161,6 @@ class YT8MTask(base_task.Task):
 
     tvars = model.trainable_variables
     grads = tape.gradient(scaled_loss, tvars)
-    print("print3\n")
     # Scales back gradient before apply_gradients when LossScaleOptimizer is
     # used.
     if isinstance(
@@ -190,7 +180,6 @@ class YT8MTask(base_task.Task):
       'model_loss': model_loss
     }
 
-    print("print4\n")
     if metrics:
       for m in metrics:
         m.update_state(all_losses[m.name])
@@ -216,8 +205,10 @@ class YT8MTask(base_task.Task):
       A dictionary of logs.
     """
     features, labels = inputs['video_matrix'], inputs['labels']
+    features = tf.squeeze(features) #(batch, 1, classes) -> (batch, classes)
+    labels = tf.squeeze(labels)
 
-    outputs = self.inference_step(features['image'], model)
+    outputs = self.inference_step(features, model)
     outputs = tf.nest.map_structure(lambda x: tf.cast(x, tf.float32), outputs) #TODO: check if necessary
     loss, model_loss = self.build_losses(model_outputs=outputs, labels=labels,
                              aux_losses=model.losses)
@@ -229,8 +220,7 @@ class YT8MTask(base_task.Task):
       'model_loss' : model_loss
     }
 
-    self.avg_prec_metric.accumulate(predictions=outputs, labels=labels)
-    logs.update(metrics.get())
+    logs.update({self.avg_prec_metric.name: (labels, outputs)})
 
     if metrics:
       for m in metrics:
@@ -244,15 +234,10 @@ class YT8MTask(base_task.Task):
 
   def aggregate_logs(self, state=None, step_outputs=None):
     if state is None:
-      # self.coco_metric.reset_states()
-      self.avg_prec_metric.clear()
-      # state = self.coco_metric
       state = self.avg_prec_metric
-    # self.coco_metric.update_state(step_outputs[self.coco_metric.name][0],
-    #                               step_outputs[self.coco_metric.name][1])
-    self.avg_prec_metric.accumulate(predictions=step_outputs[self.avg_prec_metric.name][1], labels=step_outputs[self.avg_prec_metric][0])
+    self.avg_prec_metric.accumulate(labels=step_outputs[self.avg_prec_metric.name][0],
+                                    predictions=step_outputs[self.avg_prec_metric.name][1])
     return state
 
   def reduce_aggregated_logs(self, aggregated_logs):
-    # return self.coco_metric.result()
     return self.avg_prec_metric.get()

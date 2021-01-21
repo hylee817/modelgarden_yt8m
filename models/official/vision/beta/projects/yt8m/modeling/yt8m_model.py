@@ -43,14 +43,7 @@ class YT8MModel(tf.keras.Model):
 
         max_frames = model_input.shape.as_list()[1]
         feature_size = model_input.shape.as_list()[2]
-        print("---------------- YT8M_MODEL.PY ----------------")
-        print("after SampleRandom---: ", model_input.shape) #[None, 30, 1152]
-        print("---------------- YT8M_MODEL.PY ----------------")
-
         reshaped_input = tf.reshape(model_input, shape=[-1, feature_size])
-        print("---------------- YT8M_MODEL.PY ----------------")
-        print("after reshape [-1, feature_size]: ", reshaped_input.shape) #[None, 1152]
-        print("---------------- YT8M_MODEL.PY ----------------")
         tf.summary.histogram("input_hist", reshaped_input)
 
         if input_params.add_batch_norm:
@@ -58,10 +51,6 @@ class YT8MModel(tf.keras.Model):
                                                        scale=True,
                                                        center=True,
                                                        trainable=input_params.is_training)(reshaped_input)
-
-            print("---------------- YT8M_MODEL.PY ----------------")
-            print("layers.BatchNorm: ", reshaped_input.shape)
-            print("---------------- YT8M_MODEL.PY ----------------")
 
         cluster_weights = tf.Variable(tf.random_normal_initializer(stddev=1 / tf.sqrt(tf.cast(feature_size, tf.float32)))(
             shape=[feature_size, input_params.cluster_size]),
