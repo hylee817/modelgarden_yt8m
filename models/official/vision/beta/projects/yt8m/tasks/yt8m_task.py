@@ -24,25 +24,27 @@ from official.vision.beta.projects.yt8m.dataloaders import yt8m_input
 from official.vision.beta.projects.yt8m.modeling.yt8m_model import YT8MModel
 from official.vision.beta.projects.yt8m.eval_utils import eval_util
 from official.vision.beta.projects.yt8m.configs import yt8m as yt8m_cfg
+from official.vision.beta.projects.yt8m.modeling import yt8m_model_utils as utils
 
 
 @task_factory.register_task_cls(yt8m_cfg.YT8MTask)
 class YT8MTask(base_task.Task):
   """A task for video classification."""
 
-  def build_model(self, num_frames: int=32):
+  def build_model(self):
     """Builds video classification model."""
     data_cfg = self.task_config.train_data
-    common_input_shape = [data_cfg.max_frames, sum(data_cfg.feature_sizes)] #TODO: revise
-    input_specs = tf.keras.layers.InputSpec(shape=common_input_shape)
-    logging.info('Build model input %r', common_input_shape)
+    common_input_shape = [sum(data_cfg.feature_sizes)] #TODO: revise
+    input_specs = tf.keras.layers.InputSpec(shape=[None] + common_input_shape)
+    logging.info('Build model input %r', common_input_shape) # (None, 1152)
+
 
     #model configuration
     model_config = self.task_config.model
     model = YT8MModel(
               input_params=model_config,
               input_specs=input_specs,
-              num_frames=num_frames,
+              num_frames=data_cfg.num_frames,
               num_classes=data_cfg.num_classes
               )
     return model
@@ -132,9 +134,16 @@ class YT8MTask(base_task.Task):
     Returns:
       A dictionary of logs.
     """
-    features, labels = inputs['video_matrix'], inputs['labels']
+    features, labels, num_frames = inputs['video_matrix'], inputs['labels'], inputs['num_frames']
     features = tf.squeeze(features) #(batch, 1, classes) -> (batch, classes)
     labels = tf.squeeze(labels)
+    num_frames = tf.cast(num_frames, tf.float32)
+
+    # # randomly sample either frames or sequences of frames during training to speed up convergence.
+    # if self.task_config.model.sample_random_frames:
+    #   model_input = utils.SampleRandomFrames(features, num_frames, self.task_config.model.iterations)
+    # else:
+    #   model_input = utils.SampleRandomSequence(features, num_frames, self.task_config.model.iterations)
 
     num_replicas = tf.distribute.get_strategy().num_replicas_in_sync
     with tf.GradientTape() as tape:
@@ -205,11 +214,20 @@ class YT8MTask(base_task.Task):
       A dictionary of logs.
     """
     features, labels = inputs['video_matrix'], inputs['labels']
-    features = tf.squeeze(features) #(batch, 1, classes) -> (batch, classes)
-    labels = tf.squeeze(labels)
+    print(features)
+    print(labels)
+    if self.task_config.validation_data.segment_labels:
+      feature_dim = features.shape[-1]
+      segment_size = features.shape[-2]
+      features = tf.reshape(features, shape=[-1,segment_size, feature_dim])
+    else:
+      features = tf.squeeze(features)  # (batch, 1, classes) -> (batch, classes)
+      labels = tf.squeeze(labels)
 
     outputs = self.inference_step(features, model)
-    outputs = tf.nest.map_structure(lambda x: tf.cast(x, tf.float32), outputs) #TODO: check if necessary
+    print('hhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
+    print(outputs)
+    outputs = tf.nest.map_structure(lambda x: tf.cast(x, tf.float32), outputs)
     loss, model_loss = self.build_losses(model_outputs=outputs, labels=labels,
                              aux_losses=model.losses)
 

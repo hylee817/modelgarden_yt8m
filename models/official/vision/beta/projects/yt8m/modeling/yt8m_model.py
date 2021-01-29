@@ -29,21 +29,18 @@ class YT8MModel(tf.keras.Model):
             'input_params': input_params
         }
         self._num_classes = num_classes
-        self._num_frames = num_frames
         self._input_specs = input_specs
         self._act_fn = tf_utils.get_activation(input_params.activation)
 
-        inputs = tf.keras.Input(shape=self._input_specs.shape)
+        model_input = tf.keras.Input(shape=self._input_specs.shape)
+        print("model_input", model_input)
 
-        num_frames = tf.cast(tf.expand_dims([self._num_frames], 1), tf.float32)
-        if input_params.sample_random_frames:
-            model_input = utils.SampleRandomFrames(inputs, num_frames, input_params.iterations)
-        else:
-            model_input = utils.SampleRandomSequence(inputs, num_frames, input_params.iterations)
-
-        max_frames = model_input.shape.as_list()[1]
+        # model input will be reshaped as the same in train_step()
+        max_frames = num_frames
+        # max_frames = model_input.shape.as_list()[1]
         feature_size = model_input.shape.as_list()[2]
         reshaped_input = tf.reshape(model_input, shape=[-1, feature_size])
+        print("reshaped_input", reshaped_input)
         tf.summary.histogram("input_hist", reshaped_input)
 
         if input_params.add_batch_norm:
@@ -52,12 +49,8 @@ class YT8MModel(tf.keras.Model):
                                                        center=True,
                                                        trainable=input_params.is_training)(reshaped_input)
 
-        cluster_weights = tf.Variable(tf.random_normal_initializer(stddev=1 / tf.sqrt(tf.cast(feature_size, tf.float32)))(
-            shape=[feature_size, input_params.cluster_size]),
-            name="cluster_weights")
-
-        tf.summary.histogram("cluster_weights", cluster_weights)
-        activation = tf.linalg.matmul(reshaped_input, cluster_weights)
+        # activation = reshaped input * cluster weights
+        activation = layers.Dense(input_params.cluster_size, kernel_initializer=tf.random_normal_initializer(stddev=1 / tf.sqrt(tf.cast(feature_size, tf.float32))))(reshaped_input)
 
         if input_params.add_batch_norm:
             activation = layers.BatchNormalization(name="cluster_bn",
@@ -78,12 +71,8 @@ class YT8MModel(tf.keras.Model):
         activation = tf.reshape(activation, [-1, max_frames, input_params.cluster_size])
         activation = utils.FramePooling(activation, input_params.pooling_method)
 
-        hidden1_weights = tf.Variable(tf.random_normal_initializer(stddev=1 / tf.sqrt(tf.cast(input_params.cluster_size, tf.float32)))(
-            shape=[input_params.cluster_size, input_params.hidden_size]),
-            name="hidden1_weights")
-
-        tf.summary.histogram("hidden1_weights", hidden1_weights)
-        activation = tf.linalg.matmul(activation, hidden1_weights)
+        # activation = activation * hidden1_weights
+        activation = layers.Dense(input_params.hidden_size, kernel_initializer=tf.random_normal_initializer(stddev=1 / tf.sqrt(tf.cast(input_params.cluster_size, tf.float32))))(activation)
 
         if input_params.add_batch_norm:
             activation = layers.BatchNormalization(name="hidden1_bn",
@@ -100,6 +89,7 @@ class YT8MModel(tf.keras.Model):
             activation += hidden1_biases
 
         activation = self._act_fn(activation)
+        print("activation", activation)
         tf.summary.histogram("hidden1_output", activation)
 
         aggregated_model = getattr(yt8m_agg_models,
@@ -107,7 +97,7 @@ class YT8MModel(tf.keras.Model):
         output = aggregated_model().create_model(model_input=activation,
                                                  vocab_size=self._num_classes)
 
-        super(YT8MModel, self).__init__(inputs=inputs, outputs=output.get("predictions"), **kwargs)
+        super(YT8MModel, self).__init__(inputs=model_input, outputs=output.get("predictions"), **kwargs)
 
     @property
     def checkpoint_items(self):
