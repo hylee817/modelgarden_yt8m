@@ -269,7 +269,6 @@ class Parser(parser.Parser):
     self.stride = input_params.temporal_stride
     self._max_frames = input_params.max_frames
     self._num_frames = input_params.num_frames
-    self._random_sample = input_params.random_sample
     self._seed = input_params.random_seed
     self._max_quantized_value = max_quantized_value
     self._min_quantized_value = min_quantized_value
@@ -281,11 +280,9 @@ class Parser(parser.Parser):
     self.video_matrix, self.num_frames = _concat_features(decoded_tensors["features"], self._feature_names, self._feature_sizes,
                                                           self._max_frames, self._max_quantized_value,
                                                           self._min_quantized_value)
-    # Sample random clip.
-    print(self.video_matrix)
-    self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, self._random_sample, self.stride,
+    # Sampler
+    self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, True, self.stride,
                                               self._seed)
-    print(self.video_matrix)
     output_dict = _process_segment_and_label(self.video_matrix, self.num_frames, decoded_tensors["contexts"], self._segment_labels,
                                              self._segment_size, self._num_classes)
     return output_dict
@@ -296,6 +293,8 @@ class Parser(parser.Parser):
     self.video_matrix, self.num_frames = _concat_features(decoded_tensors["features"], self._feature_names, self._feature_sizes,
                                                           self._max_frames, self._max_quantized_value,
                                                           self._min_quantized_value)
+    # Sampler
+    self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, False, self.stride)
     output_dict = _process_segment_and_label(self.video_matrix, self.num_frames, decoded_tensors["contexts"], self._segment_labels,
                                              self._segment_size, self._num_classes)
 

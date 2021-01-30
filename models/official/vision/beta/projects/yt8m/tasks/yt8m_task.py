@@ -32,12 +32,11 @@ class YT8MTask(base_task.Task):
   """A task for video classification."""
 
   def build_model(self):
-    """Builds video classification model."""
-    data_cfg = self.task_config.train_data
-    common_input_shape = [sum(data_cfg.feature_sizes)] #TODO: revise
-    input_specs = tf.keras.layers.InputSpec(shape=[None] + common_input_shape)
-    logging.info('Build model input %r', common_input_shape) # (None, 1152)
-
+    """Builds model for YT8M Task."""
+    data_cfg = self.task_config.train_data  #todo: train_data?
+    common_input_shape = [None, sum(data_cfg.feature_sizes)]
+    input_specs = tf.keras.layers.InputSpec(shape=[None] + common_input_shape) # [batch_size x num_frames x num_features]
+    logging.info('Build model input %r', common_input_shape)
 
     #model configuration
     model_config = self.task_config.model
@@ -50,7 +49,7 @@ class YT8MTask(base_task.Task):
     return model
 
   def build_inputs(self, params: yt8m_cfg.DataConfig, input_context=None):
-    """Builds classification input."""
+    """Builds input."""
 
     decoder = yt8m_input.Decoder(input_params=params)
     decoder_fn = decoder.decode
@@ -214,8 +213,6 @@ class YT8MTask(base_task.Task):
       A dictionary of logs.
     """
     features, labels = inputs['video_matrix'], inputs['labels']
-    print(features)
-    print(labels)
     if self.task_config.validation_data.segment_labels:
       feature_dim = features.shape[-1]
       segment_size = features.shape[-2]
@@ -225,8 +222,6 @@ class YT8MTask(base_task.Task):
       labels = tf.squeeze(labels)
 
     outputs = self.inference_step(features, model)
-    print('hhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
-    print(outputs)
     outputs = tf.nest.map_structure(lambda x: tf.cast(x, tf.float32), outputs)
     loss, model_loss = self.build_losses(model_outputs=outputs, labels=labels,
                              aux_losses=model.losses)

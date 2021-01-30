@@ -12,6 +12,9 @@ FLAGS = flags.FLAGS
 # Default values
 YT8M_TRAIN_EXAMPLES = 7890
 YT8M_VAL_EXAMPLES = 1530
+# 2/video -> video level
+# 2/frame -> frame level
+# 3/frame -> segment level
 YT8M_TRAIN_PATH = 'gs://youtube8m-ml/2/frame/train/train*.tfrecord'
 YT8M_VAL_PATH = 'gs://youtube8m-ml/3/frame/validate/validate*.tfrecord'
 YT8M_TEST_PATH = 'gs://youtube8m-ml/3/frame/test/test*.tfrecord'
@@ -19,45 +22,36 @@ YT8M_TEST_PATH = 'gs://youtube8m-ml/3/frame/test/test*.tfrecord'
 @dataclasses.dataclass
 class DataConfig(cfg.DataConfig):
   """The base configuration for building datasets."""
-  name: Optional[str] = None
-  split: str = 'train'
-  feature_sizes: Tuple[int, ...] = None
-  feature_names: Tuple[str, ...] = None
+  name: Optional[str] = 'yt8m'
+  split: str = None
+  feature_sizes: Tuple[int, ...] = (1024, 128)
+  feature_names: Tuple[str, ...] = ("rgb", "audio")
   segment_size: int = 1
   segment_labels: bool = False
   temporal_stride: int = 1
-  max_frames: int = -1
-  num_frames: int = -1
-  num_classes: int = -1
-  num_channels: int = 3
-  num_devices: int = 1
+  max_frames: int = 300
+  num_frames: int = 300 # set smaller to allow random sample (Parser)
+  num_classes: int = 3862
+  num_devices: int = 1    #todo: remove
   input_path: str = ''
   is_training: bool = True
-  random_sample: bool = False
-  random_seed: int = -1
+  random_seed: int = 123
   num_examples: int = -1
 
 
 def yt8m(is_training):
   """ YT8M dataset configs. """
   return DataConfig(
-    name='yt8m',
-    num_classes=3862,
-    feature_sizes=[1024, 128],
-    feature_names=["rgb", "audio"],
-    max_frames=300,
-    num_frames=300,   # set smaller to allow random sample (Parser)
-    segment_labels=False,
-    segment_size=5,
+    num_frames=30,
+    temporal_stride=1,
+    # segment_labels=False,
+    # segment_size=5,
     is_training=is_training,
     split='train' if is_training else 'valid',
-    random_sample=False,
-    random_seed=123,
     num_examples=YT8M_TRAIN_EXAMPLES if is_training
     else YT8M_VAL_EXAMPLES,
     input_path=YT8M_TRAIN_PATH if is_training
     else YT8M_VAL_PATH
-
   )
 
 
@@ -145,7 +139,7 @@ def yt8m_experiment() -> cfg.ExperimentConfig:
       'task.validation_data.is_training != None',
       'task.train_data.num_classes == task.validation_data.num_classes',
       'task.train_data.feature_sizes != None',
-      'task.train_data.feature_names != None'
+      'task.train_data.feature_names != None',
     ])
 
   return add_trainer(exp_config, train_batch_size=1024, eval_batch_size=1024)

@@ -22,7 +22,6 @@ flags.DEFINE_string(
 
 def main(_):
   gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_params)
-  print(FLAGS.flag_values_dict()) #TODO: remove (for debug)
   params = train_utils.parse_configuration(FLAGS)
   model_dir = FLAGS.model_dir
   if 'train' in FLAGS.mode:
