@@ -15,6 +15,7 @@ from official.vision.beta.configs import video_classification as exp_cfg
 from official.vision.beta.dataloaders import decoder
 from official.vision.beta.dataloaders import parser
 from official.vision.beta.ops import preprocess_ops_3d
+import tensorflow_datasets as tfds
 
 def resize_axis(tensor, axis, new_size, fill_value=0):
   """Truncates or pads a tensor to new_size on on a given axis.
@@ -91,6 +92,7 @@ def _process_segment_and_label(video_matrix,
                                  (num_segment,))
     batch_frames = tf.reshape(tf.tile([segment_size], [num_segment]),
                               (num_segment,))
+    batch_frames = tf.cast(tf.expand_dims(batch_frames, 1), tf.float32) #avoid dimension error
 
     # For segment labels, all labels are not exhaustively rated. So we only
     # evaluate the rated labels.
@@ -101,13 +103,17 @@ def _process_segment_and_label(video_matrix,
     label_values = contexts["segment_scores"].values
     sparse_labels = tf.sparse.SparseTensor(label_indices, label_values,
                                            (num_segment, num_classes))
+    print("-------------YT8M_INPUT-----------")
+    print(sparse_labels) # (None, 2) [num_segment, label]
     batch_labels = tf.sparse.to_dense(sparse_labels, validate_indices=False)
+    print(batch_labels)  #(None, 3862)
 
     sparse_label_weights = tf.sparse.SparseTensor(
       label_indices, tf.ones_like(label_values, dtype=tf.float32),
       (num_segment, num_classes))
     batch_label_weights = tf.sparse.to_dense(sparse_label_weights,
                                              validate_indices=False)
+    # output_dict = utils.get_segments(batch_video_matrix, batch_frames, 5)
   else:
     # Process video-level labels.
     label_indices = contexts["labels"].values
@@ -134,7 +140,8 @@ def _process_segment_and_label(video_matrix,
   }
   if batch_label_weights is not None:
     output_dict["label_weights"] = batch_label_weights
-
+  print("----------YT8M_INPUT----------")
+  print("output_dict",output_dict)
   return output_dict
 
 
@@ -281,8 +288,7 @@ class Parser(parser.Parser):
                                                           self._max_frames, self._max_quantized_value,
                                                           self._min_quantized_value)
     # Sampler
-    self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, True, self.stride,
-                                              self._seed)
+    # self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, True, self.stride,self._seed) #todo: sampler after process_segment?
     output_dict = _process_segment_and_label(self.video_matrix, self.num_frames, decoded_tensors["contexts"], self._segment_labels,
                                              self._segment_size, self._num_classes)
     return output_dict
@@ -294,10 +300,9 @@ class Parser(parser.Parser):
                                                           self._max_frames, self._max_quantized_value,
                                                           self._min_quantized_value)
     # Sampler
-    self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, False, self.stride)
+    # self.video_matrix = preprocess_ops_3d.sample_sequence(self.video_matrix, self._num_frames, False, self.stride, self._seed)
     output_dict = _process_segment_and_label(self.video_matrix, self.num_frames, decoded_tensors["contexts"], self._segment_labels,
                                              self._segment_size, self._num_classes)
-
     return output_dict  # batched
 
 
@@ -320,3 +325,75 @@ class Parser(parser.Parser):
         return self._parse_eval_data(decoded_tensors)
 
     return parse
+
+class PostBatchProcessor():
+
+  def __init__(self, input_params: exp_cfg.DataConfig):
+    self.segment_labels = input_params.segment_labels
+    self.num_classes = input_params.num_classes
+    self.segment_size = input_params.segment_size
+
+  def post_fn(self, batched_tensors):
+    """Processes batched Tensors."""
+    print("--------POSTBATCHPROCESSOR BEFORE--------")
+    print(batched_tensors)
+    video_ids = batched_tensors['video_ids']
+    video_matrix = batched_tensors['video_matrix']
+    labels = batched_tensors['labels']
+    num_frames = batched_tensors['num_frames']
+    label_weights = None
+
+    if self.segment_labels:
+      # [batch x num_segment x segment_size x num_features]
+      # -> [batch * num_segment x segment_size x num_features]
+      video_ids = tf.reshape(video_ids,[-1])
+      video_matrix = tf.reshape(video_matrix,[-1,self.segment_size, 1152])
+      labels = tf.reshape(labels,[-1,self.num_classes])
+      num_frames = tf.reshape(num_frames,[-1,1])
+
+      label_weights = tf.reshape(batched_tensors['label_weights'], [-1,self.num_classes])
+
+    else:
+      video_matrix = tf.squeeze(video_matrix)
+      labels = tf.squeeze(labels)
+
+    batched_tensors = {
+      "video_ids": video_ids,
+      "video_matrix": video_matrix,
+      "labels": labels,
+      "num_frames": num_frames,
+    }
+
+    print("------YT8M_INPUT.PY--------")
+    print("batched_tensors", batched_tensors)
+
+    if label_weights is not None:
+      batched_tensors["label_weights"] = label_weights
+
+    return batched_tensors
+
+class TransformBatcher():
+  def __init__(self,input_params: exp_cfg.DataConfig):
+    self._segment_labels = input_params.segment_labels
+    self._global_batch_size = input_params.global_batch_size
+    self._is_training = input_params.is_training
+
+  def batch_fn(self, dataset, input_context):
+    '''manually batch when segment_labels is on'''
+    per_replica_batch_size = input_context.get_per_replica_batch_size(
+        self._global_batch_size) if input_context else self._global_batch_size
+    if not self._segment_labels:
+        dataset = dataset.batch(
+            per_replica_batch_size, drop_remainder=True)
+    else:
+        print("--------TRANSFORMBATCHER-------")
+        print(dataset)
+        # add padding
+        pad_shapes = {"video_ids":[None],
+                      "video_matrix":[None, None, None],
+                      "labels":[None, None],
+                      "num_frames":[None, None],
+                      "label_weights":[None,None]}
+        dataset = dataset.padded_batch(per_replica_batch_size, padded_shapes=pad_shapes, drop_remainder=True)
+    
+    return dataset

@@ -18,6 +18,44 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.python.platform import gfile
 
+
+def get_segments(batch_video_mtx, batch_num_frames, segment_size):
+  """Get segment-level inputs from frame-level features."""
+  video_batch_size = batch_video_mtx.shape[0]
+  max_frame = batch_video_mtx.shape[1]
+  feature_dim = batch_video_mtx.shape[-1]
+  padded_segment_sizes = (batch_num_frames + segment_size - 1) // segment_size
+  padded_segment_sizes *= segment_size
+  segment_mask = (
+          0 < (padded_segment_sizes[:, np.newaxis] - np.arange(0, max_frame)))
+
+  # Segment bags.
+  frame_bags = batch_video_mtx.reshape((-1, feature_dim))
+  segment_frames = frame_bags[segment_mask.reshape(-1)].reshape(
+    (-1, segment_size, feature_dim))
+
+  # Segment num frames.
+  segment_start_times = np.arange(0, max_frame, segment_size)
+  num_segments = batch_num_frames[:, np.newaxis] - segment_start_times
+  num_segment_bags = num_segments.reshape((-1))
+  valid_segment_mask = num_segment_bags > 0
+  segment_num_frames = num_segment_bags[valid_segment_mask]
+  segment_num_frames[segment_num_frames > segment_size] = segment_size
+
+  max_segment_num = (max_frame + segment_size - 1) // segment_size
+  video_idxs = np.tile(
+    np.arange(0, video_batch_size)[:, np.newaxis], [1, max_segment_num])
+  segment_idxs = np.tile(segment_start_times, [video_batch_size, 1])
+  idx_bags = np.stack([video_idxs, segment_idxs], axis=-1).reshape((-1, 2))
+  video_segment_ids = idx_bags[valid_segment_mask]
+
+  return {
+    "video_batch": segment_frames,
+    "num_frames_batch": segment_num_frames,
+    "video_segment_ids": video_segment_ids
+  }
+
+
 def flatten(l):
   """Merges a list of lists into a single list. """
   return [item for sublist in l for item in sublist]
@@ -37,6 +75,8 @@ def calculate_hit_at_one(predictions, actuals):
   """
   top_prediction = np.argmax(predictions, 1)
   hits = actuals[np.arange(actuals.shape[0]), top_prediction] #(0,...,1023),(x,x,x,...x)
+  print("np.unique(top_prediction):  ",np.unique(top_prediction))
+  print("np.where(actuals): ", np.where(actuals))
   return np.average(hits)
 
 
@@ -160,12 +200,12 @@ class EvaluationMetrics(object):
     """
     self.sum_hit_at_one = 0.0
     self.sum_perr = 0.0
-    self.sum_loss = 0.0
     self.map_calculator = map_calculator.MeanAveragePrecisionCalculator(
         num_class, top_n=top_n)
     self.global_ap_calculator = ap_calculator.AveragePrecisionCalculator()
     self.top_k = top_k
     self.num_examples = 0
+    self.num_class = num_class
 
 
   def accumulate(self, predictions, labels):
@@ -185,13 +225,15 @@ class EvaluationMetrics(object):
       ValueError: An error occurred when the shape of predictions and actuals
         does not match.
     """
+    print("------------EVAL_UTIL------------")
+    print("perdictions", predictions)
     predictions, labels = self._convert_to_numpy(
       predictions=predictions[0],
       groundtruths=labels[0])
+    print("predictions.where>0", np.where(predictions > 0))
     batch_size = labels.shape[0]
     mean_hit_at_one = calculate_hit_at_one(predictions, labels)
     mean_perr = calculate_precision_at_equal_recall_rate(predictions, labels)
-    # mean_loss = numpy.mean(loss)
 
     # Take the top 20 predictions.
     sparse_predictions, sparse_labels, num_positives = top_k_by_class(
@@ -205,7 +247,6 @@ class EvaluationMetrics(object):
     self.num_examples += batch_size
     self.sum_hit_at_one += mean_hit_at_one * batch_size
     self.sum_perr += mean_perr * batch_size
-    # self.sum_loss += mean_loss * batch_size
 
     return {"hit_at_one": mean_hit_at_one, "perr": mean_perr}
 
@@ -217,32 +258,31 @@ class EvaluationMetrics(object):
 
     Returns:
       dictionary: a dictionary storing the evaluation metrics for the epoch. The
-        dictionary has the fields: avg_hit_at_one, avg_perr, avg_loss, and
+        dictionary has the fields: avg_hit_at_one, avg_perr, and
         aps (default nan).
     """
     if self.num_examples <= 0:
       raise ValueError("total_sample must be positive.")
     avg_hit_at_one = self.sum_hit_at_one / self.num_examples
     avg_perr = self.sum_perr / self.num_examples
-    avg_loss = self.sum_loss / self.num_examples
 
     aps = self.map_calculator.peek_map_at_n()
+    map = sum(aps) / self.num_class
     gap = self.global_ap_calculator.peek_ap_at_n()
 
     epoch_info_dict = {
         "avg_hit_at_one": avg_hit_at_one,
         "avg_perr": avg_perr,
-        "avg_loss": avg_loss,
-        "map": aps,
+        "map": map,
         "gap": gap
     }
     return epoch_info_dict
 
   def clear(self):
     """Clear the evaluation metrics and reset the EvaluationMetrics object."""
+    print("CLEARRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR!!!!!!!!!!!!!!!!!!!!")
     self.sum_hit_at_one = 0.0
     self.sum_perr = 0.0
-    self.sum_loss = 0.0
     self.map_calculator.clear()
     self.global_ap_calculator.clear()
     self.num_examples = 0

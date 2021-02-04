@@ -13,12 +13,48 @@
 # limitations under the License.
 """Contains a collection of util functions for training and evaluating."""
 
-import numpy
+import numpy as np
 import tensorflow as tf
 from absl import logging
 # from tensorflow import logging
 xrange = range  # Python 3
 
+def get_segments(batch_video_mtx, batch_num_frames, segment_size):
+  """Get segment-level inputs from frame-level features."""
+  print(batch_video_mtx) # (None, 5, 1152)
+  video_batch_size = batch_video_mtx.shape[0]
+  max_frame = batch_video_mtx.shape[1]
+  feature_dim = batch_video_mtx.shape[-1]
+  padded_segment_sizes = (batch_num_frames + segment_size - 1) // segment_size
+  padded_segment_sizes *= segment_size
+  segment_mask = (
+          0 < (padded_segment_sizes[:, np.newaxis] - np.arange(0, max_frame)))
+
+  # Segment bags.
+  frame_bags = tf.reshape(batch_video_mtx, shape=[-1, feature_dim])
+  segment_frames = tf.reshape(frame_bags[tf.reshape(segment_mask, shape=[-1])], shape=[-1, segment_size, feature_dim])
+
+  # Segment num frames.
+  segment_start_times = np.arange(0, max_frame, segment_size)
+  num_segments = batch_num_frames[:, np.newaxis] - segment_start_times
+  num_segment_bags = tf.reshape(num_segments, shape=[-1])
+  valid_segment_mask = num_segment_bags > 0
+  segment_num_frames = tf.cast(num_segment_bags[valid_segment_mask], dtype=tf.int32)
+  segment_num_frames = tf.where(tf.greater(segment_num_frames, segment_size),segment_size,segment_num_frames)
+  # segment_num_frames[segment_num_frames > segment_size] = segment_size
+
+  max_segment_num = (max_frame + segment_size - 1) // segment_size
+  video_idxs = np.tile(
+    np.arange(0, video_batch_size)[:, np.newaxis], [1, max_segment_num])
+  segment_idxs = np.tile(segment_start_times, [video_batch_size, 1])
+  idx_bags = tf.reshape(np.stack([video_idxs, segment_idxs], axis=-1), shape=[-1, 2])
+  video_segment_ids = idx_bags[valid_segment_mask]
+
+  return {
+    "video_batch": segment_frames,
+    "num_frames_batch": segment_num_frames,
+    "video_segment_ids": video_segment_ids
+  }
 
 def Dequantize(feat_vector, max_quantized_value=2, min_quantized_value=-2):
   """Dequantize the feature from the byte format to the float format.
@@ -114,7 +150,7 @@ def AddEpochSummary(summary_writer,
   avg_loss = epoch_info_dict["avg_loss"]
   aps = epoch_info_dict["aps"]
   gap = epoch_info_dict["gap"]
-  mean_ap = numpy.mean(aps)
+  mean_ap = np.mean(aps)
 
   summary_writer.add_summary(
       MakeSummary("Epoch/" + summary_scope + "_Avg_Hit@1", avg_hit_at_one),

@@ -10,11 +10,10 @@ from absl import flags
 FLAGS = flags.FLAGS
 
 # Default values
-YT8M_TRAIN_EXAMPLES = 7890
-YT8M_VAL_EXAMPLES = 1530
-# 2/video -> video level
+YT8M_TRAIN_EXAMPLES = 4000
+YT8M_VAL_EXAMPLES = 1000
 # 2/frame -> frame level
-# 3/frame -> segment level
+# 3/frame -> segment level #todo: if segment_labels = True -> check if using 3/frame dataset
 YT8M_TRAIN_PATH = 'gs://youtube8m-ml/2/frame/train/train*.tfrecord'
 YT8M_VAL_PATH = 'gs://youtube8m-ml/3/frame/validate/validate*.tfrecord'
 YT8M_TEST_PATH = 'gs://youtube8m-ml/3/frame/test/test*.tfrecord'
@@ -44,8 +43,8 @@ def yt8m(is_training):
   return DataConfig(
     num_frames=30,
     temporal_stride=1,
-    # segment_labels=False,
-    # segment_size=5,
+    segment_labels=False,
+    segment_size=5,
     is_training=is_training,
     split='train' if is_training else 'valid',
     num_examples=YT8M_TRAIN_EXAMPLES if is_training
@@ -142,6 +141,6 @@ def yt8m_experiment() -> cfg.ExperimentConfig:
       'task.train_data.feature_names != None',
     ])
 
-  return add_trainer(exp_config, train_batch_size=1024, eval_batch_size=1024)
+  return add_trainer(exp_config, train_batch_size=1024,eval_batch_size=512)
 
 

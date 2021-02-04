@@ -14,11 +14,6 @@ from official.vision.beta.projects.yt8m.configs import yt8m
 from official.vision.beta.projects.yt8m.tasks import yt8m_task
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string(
-  'train_dir',
-  default=None,
-  help='The directory where the training checkpoints'
-       'are stored.')
 
 def main(_):
   gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_params)

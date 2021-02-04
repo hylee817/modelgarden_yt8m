@@ -14,17 +14,14 @@ task:
     temporal_stride: 1
     num_devices: 1
     input_path: 'gs://youtube8m-ml/2/frame/train/train*.tfrecord'
-    num_examples: 7890
+    num_examples: 8000
   validation_data:
     segment_size: 5
-    segment_labels: false
+    segment_labels: true
     temporal_stride: 1
     num_devices: 1
-    input_path: 'gs://youtube8m-ml/2/frame/validate/validate*.tfrecord'
-    feature_names: !!python/tuple
-      - "rgb"
-      - "audio"
-    num_examples: 1530
+    input_path: 'gs://youtube8m-ml/3/frame/validate/validate*.tfrecord'
+    num_examples: 2000
   losses:
     name: 'binary_crossentropy'
     from_logits: false

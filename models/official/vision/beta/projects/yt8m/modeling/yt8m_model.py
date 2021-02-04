@@ -38,10 +38,11 @@ class YT8MModel(tf.keras.Model):
         self._act_fn = tf_utils.get_activation(input_params.activation)
 
         # [batch_size x num_frames x num_features]
-        feature_size = input_specs.shape[2]
+        feature_size = input_specs.shape[-1]
         model_input = tf.keras.Input(shape=self._input_specs.shape[1:]) #shape 'excluding' batch_size
         reshaped_input = tf.reshape(model_input, [-1, feature_size])
         tf.summary.histogram("input_hist", model_input) #todo: move to train_step
+
 
         # configure model
         if input_params.add_batch_norm:
